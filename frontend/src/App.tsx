@@ -76,7 +76,7 @@ export default function App() {
             <InventoryChart history={history} cap={snapshot.params.max_inventory} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <DepthChart book={snapshot.book} mid={snapshot.mid} />
+            <DepthChart book={snapshot.book} mid={snapshot.mid} tickSize={snapshot.params.tick_size} />
             <SpreadAnalytics snap={snapshot} />
           </div>
           <FillHeatmap fills={snapshot.recent_fills} />
