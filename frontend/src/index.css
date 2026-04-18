@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Inter", sans-serif;
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+.card {
+  @apply bg-panel rounded-lg border border-panel2 p-4;
+}
+.stat-label { @apply text-xs uppercase tracking-wider text-muted; }
+.stat-value { @apply text-xl font-semibold tabular-nums; }
+.pill { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
