@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -24,6 +25,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import DEFAULT_PARAMS, SimParams
 from .simulator import Simulator
 
+# When no browser is connected on /ws, do not burn CPU stepping the sim (helps
+# Railway / other hosts scale down or sleep). Tune with IDLE_POLL_SECONDS.
+_IDLE_POLL = max(0.25, float(os.environ.get("IDLE_POLL_SECONDS", "1.0")))
+
 
 class AppState:
     sim: Simulator
@@ -31,16 +36,22 @@ class AppState:
     latest_snapshot: dict[str, Any] | None = None
     _task: asyncio.Task | None = None
     _lock: asyncio.Lock
+    ws_clients: int = 0
+    _ws_count_lock: asyncio.Lock
 
     def __init__(self) -> None:
         self.sim = Simulator(params=DEFAULT_PARAMS)
         self._lock = asyncio.Lock()
+        self._ws_count_lock = asyncio.Lock()
 
     async def runner(self):
-        """Background task advancing the simulation at ``tick_hz``."""
+        """Background task: advance sim at ``tick_hz`` only while a WS client is connected."""
         period = 1.0 / self.tick_hz
         try:
             while True:
+                if self.ws_clients == 0:
+                    await asyncio.sleep(_IDLE_POLL)
+                    continue
                 async with self._lock:
                     self.latest_snapshot = self.sim.step()
                 await asyncio.sleep(period)
@@ -55,6 +66,8 @@ state: AppState
 async def lifespan(app: FastAPI):
     global state
     state = AppState()
+    async with state._lock:
+        state.latest_snapshot = state.sim.step()
     state._task = asyncio.create_task(state.runner())
     try:
         yield
@@ -118,6 +131,8 @@ async def snapshot() -> dict:
 @app.websocket("/ws")
 async def ws_stream(ws: WebSocket) -> None:
     await ws.accept()
+    async with state._ws_count_lock:
+        state.ws_clients += 1
     # Subscribe to broadcasts by polling latest_snapshot at tick_hz
     period = 1.0 / state.tick_hz
     try:
@@ -134,3 +149,6 @@ async def ws_stream(ws: WebSocket) -> None:
             await ws.close()
         except Exception:
             pass
+    finally:
+        async with state._ws_count_lock:
+            state.ws_clients -= 1
